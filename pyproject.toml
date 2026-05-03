@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["dpkt>=1.9.8"]
 
 [project.scripts]
-tcpfsm = "tcpfsm.cli:main"
+tcpfsm = "tcpfsm.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

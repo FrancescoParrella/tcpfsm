@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from .analyzer import analyze
-from .render import render_summary_table, render_connection_detail, render_json
+from .render import _conn_to_dict, render_human, render_json
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Output in JSON format",
     )
+    p.add_argument(
+        "--half-open-timeout",
+        metavar="SECONDS",
+        type=float,
+        default=30.0,
+        help="Timeout (s) for half-open connection detection (default: 30.0)",
+    )
     return p
 
 
@@ -45,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        connections = analyze(str(pcap_path))
+        connections = analyze(str(pcap_path), half_open_timeout=args.half_open_timeout)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -56,11 +64,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: no connection with index {args.connection}", file=sys.stderr)
             return 1
         if args.json:
-            from .render import render_json as rj, _conn_to_dict
-            import json
             print(json.dumps(_conn_to_dict(matched[0]), indent=2))
         else:
-            print(render_connection_detail(matched[0]))
+            print(render_human(connections, connection=args.connection))
         return 0
 
     if args.anomalies_only:
@@ -69,8 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(render_json(connections))
     else:
-        print(render_summary_table(connections))
-
+        print(render_human(connections, anomalies_only=args.anomalies_only))
     return 0
 
 

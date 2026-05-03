@@ -1,4 +1,4 @@
-"""Output formatting — plain text and JSON."""
+"""Output formatting - plain text and JSON."""
 
 from __future__ import annotations
 
@@ -8,6 +8,15 @@ from typing import Optional
 
 from .connection import Connection
 from .anomaly import Anomaly, AnomalyKind
+from .fsm import State
+
+_STATE_DISPLAY: dict[State, str] = {
+    State.OBSERVED_ESTABLISHED: "OBSERVED",
+}
+
+
+def _state_label(s: State) -> str:
+    return _STATE_DISPLAY.get(s, s.name)
 
 
 def _ts(ts: float) -> str:
@@ -24,8 +33,8 @@ def render_summary_table(connections: list[Connection]) -> str:
 
     header = (
         f"{'#':>4}  {'SRC':>21}  {'DST':>21}  "
-        f"{'DURATION':>10}  {'TX→':>8}  {'←RX':>8}  "
-        f"{'INIT STATE':>14}  {'RESP STATE':>14}  {'ANOMALIES':>9}"
+        f"{'DURATION':>10}  {'TX->':>8}  {'<-RX':>8}  "
+        f"{'INIT STATE':>13}  {'RESP STATE':>13}  {'ANOMALIES':>9}"
     )
     sep = "-" * len(header)
     lines = [header, sep]
@@ -36,7 +45,7 @@ def render_summary_table(connections: list[Connection]) -> str:
         lines.append(
             f"{c.index:>4}  {src:>21}  {dst:>21}  "
             f"{c.duration:>10.3f}  {c.init_bytes:>8}  {c.resp_bytes:>8}  "
-            f"{c.final_state_initiator.name:>14}  {c.final_state_responder.name:>14}  "
+            f"{_state_label(c.final_state_initiator):>13}  {_state_label(c.final_state_responder):>13}  "
             f"{len(c.anomalies):>9}"
         )
 
@@ -47,11 +56,11 @@ def render_connection_detail(conn: Connection) -> str:
     lines: list[str] = []
     src = f"{conn.src_ip}:{conn.src_port}"
     dst = f"{conn.dst_ip}:{conn.dst_port}"
-    lines.append(f"Connection #{conn.index}  {src} → {dst}")
+    lines.append(f"Connection #{conn.index}  {src} -> {dst}")
     lines.append(f"  Duration : {conn.duration:.3f}s")
     lines.append(f"  Packets  : {conn.packet_count}")
-    lines.append(f"  TX bytes : {conn.init_bytes}  (initiator → responder)")
-    lines.append(f"  RX bytes : {conn.resp_bytes}  (responder → initiator)")
+    lines.append(f"  TX bytes : {conn.init_bytes}  (initiator -> responder)")
+    lines.append(f"  RX bytes : {conn.resp_bytes}  (responder -> initiator)")
     lines.append(f"  Final    : initiator={conn.final_state_initiator.name}  responder={conn.final_state_responder.name}")
     lines.append("")
 
@@ -78,6 +87,21 @@ def render_connection_detail(conn: Connection) -> str:
     return "\n".join(lines)
 
 
+def render_human(
+    connections: list[Connection],
+    *,
+    connection: int | None = None,
+    anomalies_only: bool = False,
+) -> str:
+    """Dispatch to detail or summary view based on options."""
+    if connection is not None:
+        matched = [c for c in connections if c.index == connection]
+        return render_connection_detail(matched[0]) if matched else ""
+    if anomalies_only:
+        connections = [c for c in connections if c.anomalies]
+    return render_summary_table(connections)
+
+
 def _conn_to_dict(conn: Connection) -> dict:
     return {
         "index": conn.index,
@@ -85,6 +109,9 @@ def _conn_to_dict(conn: Connection) -> dict:
         "src_port": conn.src_port,
         "dst_ip": conn.dst_ip,
         "dst_port": conn.dst_port,
+        "mid_stream": conn.mid_stream,
+        "first_ts": conn.first_ts,
+        "last_ts": conn.last_ts,
         "duration": conn.duration,
         "init_bytes": conn.init_bytes,
         "resp_bytes": conn.resp_bytes,

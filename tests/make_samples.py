@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 SAMPLES_DIR = Path(__file__).parent / "samples"
+SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _pcap_global_header() -> bytes:
@@ -175,6 +176,67 @@ def make_connection_refused() -> None:
     write_pcap("connection_refused.pcap", records)
 
 
+def make_showcase() -> None:
+    """Five mixed connections for README demo: clean, retransmissions, RST, mid-stream, half-open."""
+    records = []
+
+    # 1 — clean handshake + graceful close (active close by client)
+    C1, S1, CP1, SP1 = "10.0.0.1", "10.0.0.2", 55001, 80
+    records += [
+        (1, 0,      _eth_ip_tcp(C1, S1, CP1, SP1, SYN,     seq=1000, ack=0)),
+        (1, 100000, _eth_ip_tcp(S1, C1, SP1, CP1, SYN_ACK, seq=2000, ack=1001)),
+        (1, 200000, _eth_ip_tcp(C1, S1, CP1, SP1, ACK,     seq=1001, ack=2001)),
+        (1, 300000, _eth_ip_tcp(C1, S1, CP1, SP1, ACK,     seq=1001, ack=2001, payload=b"GET / HTTP/1.0\r\n")),
+        (1, 500000, _eth_ip_tcp(S1, C1, SP1, CP1, ACK,     seq=2001, ack=1017, payload=b"HTTP/1.0 200 OK\r\n")),
+        (2, 0,      _eth_ip_tcp(C1, S1, CP1, SP1, FIN_ACK, seq=1017, ack=2018)),
+        (2, 100000, _eth_ip_tcp(S1, C1, SP1, CP1, ACK,     seq=2018, ack=1018)),
+        (2, 200000, _eth_ip_tcp(S1, C1, SP1, CP1, FIN_ACK, seq=2018, ack=1018)),
+        (2, 300000, _eth_ip_tcp(C1, S1, CP1, SP1, ACK,     seq=1018, ack=2019)),
+    ]
+
+    # 2 — two retransmissions of the same segment
+    C2, S2, CP2, SP2 = "10.0.0.1", "10.0.0.2", 55002, 443
+    records += [
+        (4, 0,      _eth_ip_tcp(C2, S2, CP2, SP2, SYN,     seq=3000, ack=0)),
+        (4, 100000, _eth_ip_tcp(S2, C2, SP2, CP2, SYN_ACK, seq=4000, ack=3001)),
+        (4, 200000, _eth_ip_tcp(C2, S2, CP2, SP2, ACK,     seq=3001, ack=4001)),
+        (4, 300000, _eth_ip_tcp(C2, S2, CP2, SP2, ACK,     seq=3001, ack=4001, payload=b"Hello")),
+        (4, 800000, _eth_ip_tcp(C2, S2, CP2, SP2, ACK,     seq=3001, ack=4001, payload=b"Hello")),  # retransmit 1
+        (4, 900000, _eth_ip_tcp(C2, S2, CP2, SP2, ACK,     seq=3001, ack=4001, payload=b"Hello")),  # retransmit 2
+        (5, 0,      _eth_ip_tcp(S2, C2, SP2, CP2, ACK,     seq=4001, ack=3006)),
+        (5, 100000, _eth_ip_tcp(C2, S2, CP2, SP2, FIN_ACK, seq=3006, ack=4001)),
+        (5, 200000, _eth_ip_tcp(S2, C2, SP2, CP2, FIN_ACK, seq=4001, ack=3007)),
+        (5, 300000, _eth_ip_tcp(C2, S2, CP2, SP2, ACK,     seq=3007, ack=4002)),
+    ]
+
+    # 3 — established connection terminated by RST from server
+    C3, S3, CP3, SP3 = "10.0.0.1", "10.0.0.2", 55003, 8080
+    records += [
+        (7, 0,      _eth_ip_tcp(C3, S3, CP3, SP3, SYN,     seq=5000, ack=0)),
+        (7, 100000, _eth_ip_tcp(S3, C3, SP3, CP3, SYN_ACK, seq=6000, ack=5001)),
+        (7, 200000, _eth_ip_tcp(C3, S3, CP3, SP3, ACK,     seq=5001, ack=6001)),
+        (7, 300000, _eth_ip_tcp(C3, S3, CP3, SP3, ACK,     seq=5001, ack=6001, payload=b"POST /upload")),
+        (7, 400000, _eth_ip_tcp(S3, C3, SP3, CP3, RST_ACK, seq=6001, ack=5013)),
+    ]
+
+    # 4 — mid-stream: capture started after handshake, data-only packets
+    C4, S4, CP4, SP4 = "10.0.0.3", "10.0.0.4", 55004, 80
+    records += [
+        (9, 0,      _eth_ip_tcp(C4, S4, CP4, SP4, ACK, seq=7000, ack=8000, payload=b"GET /api")),
+        (9, 100000, _eth_ip_tcp(S4, C4, SP4, CP4, ACK, seq=8000, ack=7008, payload=b"200 OK")),
+        (9, 200000, _eth_ip_tcp(C4, S4, CP4, SP4, ACK, seq=7008, ack=8006)),
+    ]
+
+    # 5 — half-open: SYN never answered; retry SYN at t=45 triggers finalize() > 30 s timeout
+    C5, S5, CP5, SP5 = "10.0.0.1", "10.0.0.5", 55005, 9999
+    records += [
+        (11, 0, _eth_ip_tcp(C5, S5, CP5, SP5, SYN, seq=9000, ack=0)),
+        (45, 0, _eth_ip_tcp(C5, S5, CP5, SP5, SYN, seq=9001, ack=0)),
+    ]
+
+    write_pcap("showcase.pcap", records)
+
+
 if __name__ == "__main__":
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     make_clean_handshake()
@@ -182,4 +244,5 @@ if __name__ == "__main__":
     make_half_open()
     make_rst_terminated()
     make_connection_refused()
+    make_showcase()
     print("All sample pcaps written.")
