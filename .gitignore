@@ -1,5 +1,9 @@
 __pycache__/
+**/__pycache__/
 *.pyc
 *.egg-info/
+**/*.egg-info/
 tests/samples/*.pcap
 demo_*.txt
+.pytest_cache/
+.mypy_cache/

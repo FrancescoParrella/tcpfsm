@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: tcpfsm
-Version: 0.1.0
-Summary: TCP state machine analyzer — reconstructs TCP connection lifecycles from .pcap files
-Requires-Python: >=3.10
-Requires-Dist: dpkt>=1.9.8
