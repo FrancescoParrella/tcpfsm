@@ -141,9 +141,9 @@ def make_half_open() -> None:
     C, S = "10.0.0.1", "10.0.0.3"
     CP, SP = 54323, 9999
     records = [
-        (1, 0,      _eth_ip_tcp(C, S, CP, SP, SYN, seq=5000, ack=0)),
-        # No reply — capture ends 10 seconds later with an unrelated packet
-        (11, 0,     _eth_ip_tcp(C, S, CP, SP, SYN, seq=5000, ack=0)),  # retry SYN
+        (1,  0, _eth_ip_tcp(C, S, CP, SP, SYN, seq=5000, ack=0)),
+        # No reply — 35 s later a retry SYN arrives (exceeds 30 s half-open timeout)
+        (36, 0, _eth_ip_tcp(C, S, CP, SP, SYN, seq=5001, ack=0)),
     ]
     write_pcap("half_open.pcap", records)
 
